@@ -25,6 +25,8 @@ result = screener.response
 print(result['total'])
 symbols = []
 
+# for git
+
 for i in range(0, 3250, 250):
     screener.patch_body({"offset": i})
     result = screener.response
