@@ -40,8 +40,8 @@ tickers = yf.Tickers(tickers_string)
 columns = ["Ticker", "Histogram", "Derivative"]
 potentials = pd.DataFrame(columns=columns)
 print(len(symbols))
-print(symbols.index('SPFD.TO'))
-print(tickers.tickers['SPFD.TO'].info)
+# print(symbols.index('SPFD.TO'))
+# print(tickers.tickers['SPFD.TO'].info)
 
 for ticker in symbols:
     print(ticker)
@@ -53,11 +53,12 @@ for ticker in symbols:
         signal = MACD.ewm(span=9, adjust=False, min_periods=9).mean()
         histogram = MACD - signal
         derivative = histogram.iat[-1] - histogram.iat[-2]
-        if histogram.iat[-1] <= 0.5 and histogram.iat[-1] >= -0.5 and derivative >= 0.3:
+        if histogram.iat[-1] <= 0.1 and histogram.iat[-1] >= -0.1 and derivative >= 0.01:
             new_row = {'Ticker': ticker, 'Histogram': histogram.iat[-1], 'Derivative': derivative}
             potentials.loc[len(potentials)] = new_row
 
 print(potentials.shape[0])
+potentials.to_csv("potentials.csv", index=False)
 
 # 
 # i = 0
