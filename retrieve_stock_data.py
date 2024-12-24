@@ -42,6 +42,8 @@ potentials = pd.DataFrame(columns=columns)
 print(len(symbols))
 # print(symbols.index('SPFD.TO'))
 # print(tickers.tickers['SPFD.TO'].info)
+print(tickers.tickers[symbols[0]].history(period = '1mo', interval = '15m'))
+print(symbols[0])
 
 for ticker in symbols:
     print(ticker)
