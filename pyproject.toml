@@ -1,0 +1,11 @@
+[project]
+name = "stock-monitoring"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pandas>=3.0.5",
+    "requests>=2.34.2",
+    "yfinance>=1.5.2",
+]
