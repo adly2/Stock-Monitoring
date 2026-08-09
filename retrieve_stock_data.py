@@ -24,15 +24,20 @@ quote_info = {}
 for i in range(0, 4750, 250):
     result = yf.screen(cq, offset=i, size=250)
     for quote in result["quotes"]:
-        if "-" not in quote["symbol"] and 1 <= quote["regularMarketPrice"] <= 50:
+        price = quote.get("regularMarketPrice")
+        # A handful of listings (e.g. delisted/inactive tickers) have no live
+        # price at all - skip those instead of crashing on the missing field.
+        if price is None:
+            continue
+        if "-" not in quote["symbol"] and 1 <= price <= 50:
             symbols.append(quote["symbol"])
             quote_info[quote["symbol"]] = {
                 "MarketCap": quote.get("marketCap"),
-                "Price": quote["regularMarketPrice"],
+                "Price": price,
             }
 
 tickers_string = " ".join(symbols)
-columns = ["Ticker", "MarketCap", "Price", "Histogram", "Derivative"]
+columns = ["Ticker", "MarketCap", "Price", "Histogram", "Derivative", "RSI"]
 potentials = pd.DataFrame(columns=columns)
 print(len(symbols))
 
@@ -42,7 +47,7 @@ cached_data = (
     + "_"
     + period
     + "_"
-    + datetime.datetime.now().strftime("%Y%m%d")
+    + datetime.datetime.now().strftime("%Y%m%d%H")
     + ".pkl"
 )
 
@@ -75,6 +80,17 @@ for ticker in symbols:
         signal = MACD.ewm(span=9, adjust=False, min_periods=9).mean()
         histogram = MACD - signal
         derivative = histogram.iat[-1] - histogram.iat[-2]  # is the histogram rising?
+
+        # 14-period RSI (Wilder's smoothing, approximated via EMA with alpha=1/14)
+        # - measures how overbought/oversold the stock is; 0-100, with >70
+        # typically read as overbought, <30 oversold.
+        delta = df["Close"].diff()
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
+        avg_gain = gain.ewm(alpha=1 / 14, min_periods=14, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1 / 14, min_periods=14, adjust=False).mean()
+        rsi = 100 - (100 / (1 + avg_gain / avg_loss))
+
         if (
             histogram.iat[-1] <= 0.05
             and histogram.iat[-1] >= -0.05
@@ -86,6 +102,7 @@ for ticker in symbols:
                 "Price": quote_info[ticker]["Price"],
                 "Histogram": histogram.iat[-1],
                 "Derivative": derivative,
+                "RSI": rsi.iat[-1],
             }
             potentials.loc[len(potentials)] = new_row
 
