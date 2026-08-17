@@ -37,7 +37,7 @@ for i in range(0, 4750, 250):
             }
 
 tickers_string = " ".join(symbols)
-columns = ["Ticker", "MarketCap", "Price", "Histogram", "Derivative", "RSI"]
+columns = ["Ticker", "MarketCap", "Price", "Histogram", "Derivative", "RSI", "EMA200"]
 potentials = pd.DataFrame(columns=columns)
 print(len(symbols))
 
@@ -50,8 +50,8 @@ cached_data = (
     + datetime.datetime.now().strftime("%Y%m%d%H")
     + ".pkl"
 )
-
-if os.path.exists(cached_data):
+use_cached_data = False
+if os.path.exists(cached_data) and use_cached_data:
     data = pd.read_pickle(cached_data)
 else:
     # Fetch PERIOD of INTERVAL price data for every symbol in one multi-threaded
@@ -66,14 +66,31 @@ else:
     )
 
     # Save to disk so that I can rerun quickly if needed
-    data.to_pickle(cached_data)
+    if not use_cached_data:
+        data.to_pickle(cached_data)
+    print("Downloaded relevant data, analyzing...")
 
 # For each ticker, compute the MACD histogram and flag stocks where the
 # histogram is near zero (about to cross the signal line) and rising -
 # a potential bullish MACD crossover setup.
-for ticker in symbols:
+# Iterate the tickers yf.download() actually returned data for, rather than
+# `symbols` - it silently omits tickers it couldn't fetch (delisted, invalid,
+# no data available) instead of raising, so `symbols` can contain tickers
+# that never made it into `data`.
+MIN_AVG_VOLUME = 50  # kept low so legitimately thin-but-real instruments (e.g.
+# CAD-hedged ETFs) aren't excluded - this is mainly a backstop behind the
+# zero-volume check below.
+
+for ticker in set(data.columns.get_level_values(0)):
     df = data[ticker].dropna(how="all")
     if len(df) >= 2:  # need at least 2 rows to compute the histogram's derivative
+        # Skip thinly-traded tickers: a zero-volume bar means no trades
+        # actually happened, so that price isn't real price discovery (e.g.
+        # NEO-listed dual-listings that barely trade at all).
+        recent_volume = df["Volume"].tail(10)
+        if (recent_volume == 0).any() or recent_volume.mean() < MIN_AVG_VOLUME:
+            continue
+
         ema_12 = df["Close"].ewm(span=12, adjust=False, min_periods=12).mean()
         ema_26 = df["Close"].ewm(span=26, adjust=False, min_periods=26).mean()
         MACD = ema_12 - ema_26
@@ -91,6 +108,10 @@ for ticker in symbols:
         avg_loss = loss.ewm(alpha=1 / 14, min_periods=14, adjust=False).mean()
         rsi = 100 - (100 / (1 + avg_gain / avg_loss))
 
+        # Long-term trend reference - compare against Price to see if the
+        # stock is trading above or below its 200-period EMA.
+        ema_200 = df["Close"].ewm(span=200, adjust=False, min_periods=200).mean()
+
         if (
             histogram.iat[-1] <= 0.05
             and histogram.iat[-1] >= -0.05
@@ -103,6 +124,7 @@ for ticker in symbols:
                 "Histogram": histogram.iat[-1],
                 "Derivative": derivative,
                 "RSI": rsi.iat[-1],
+                "EMA200": ema_200.iat[-1],
             }
             potentials.loc[len(potentials)] = new_row
 
